@@ -5,23 +5,23 @@ A full-stack application for exploring and summarizing customer feedback using A
 ## Features
 
 - **Feedback Exploration**: Browse, search, and filter customer feedback by source, sentiment, and date range
-- **AI Summarization**: Generate intelligent summaries of feedback using Google Gemini
+- **AI Summarization**: Generate intelligent summaries of feedback using Google Gemini 2.5 Flash
 - **Sentiment Analysis**: Automatic sentiment classification (positive, negative, neutral)
 - **Statistics Dashboard**: View feedback counts by sentiment and source
 - **Real-time Search**: Quick text search across all feedback
 
 ## Tech Stack
 
-- **Backend**: FastAPI, SQLAlchemy, PostgreSQL, Alembic
+- **Backend**: FastAPI, SQLAlchemy, PostgreSQL, Pydantic
 - **Frontend**: React, TypeScript, Vite
-- **AI**: Google Gemini API
-- **Database**: PostgreSQL (via Docker Compose)
+- **AI**: Google Gemini 2.5 Flash API
+- **Database**: PostgreSQL (local installation)
 
 ## Prerequisites
 
 - Python 3.9+
 - Node.js 18+
-- Docker and Docker Compose
+- PostgreSQL (local installation via Homebrew or direct install)
 - Google Gemini API key
 
 ## Setup Instructions
@@ -40,19 +40,49 @@ Create a `.env` file in the root directory:
 cp .env.example .env
 ```
 
-Edit `.env` and add your Google Gemini API key:
+Edit `.env` and add your configuration:
 
 ```
-GEMINI_API_KEY=your_actual_api_key_here
+# Database Configuration (use your local PostgreSQL username)
+DATABASE_URL=postgresql://<YOUR-USERNAME>@localhost:5432/feedback_db
+
+# Google Gemini API Key
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# CORS Origins (comma-separated)
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+
+# Application Settings
+DEBUG=false
+APP_NAME=Feedback Exploration API
 ```
 
-### 3. Start PostgreSQL Database
+### 3. Set Up Local PostgreSQL
+
+#### Install PostgreSQL (if not already installed)
+
+**Using Homebrew:**
+```bash
+brew install postgresql@18
+brew services start postgresql@18
+```
+
+**Or download from:** https://www.postgresql.org/download/macosx/
+
+#### Create Database
 
 ```bash
-docker-compose up -d
+# Connect to PostgreSQL (replace 'your_username' with your PostgreSQL username)
+psql -U your_username -d postgres
+
+# Create the database
+CREATE DATABASE feedback_db;
+
+# Exit psql
+\q
 ```
 
-This will start a PostgreSQL container on port 5432.
+**Note:** If you don't have a PostgreSQL user set up, you can use your macOS username. Homebrew installations typically use your system username by default.
 
 ### 4. Set Up Backend
 
@@ -60,14 +90,11 @@ This will start a PostgreSQL container on port 5432.
 cd backend
 
 # Create virtual environment (recommended)
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Run database migrations (tables will be created automatically on first run)
-# The app will create tables automatically, but you can also use Alembic if needed
 
 # Seed the database with sample data
 python seed_data.py
@@ -77,7 +104,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The backend API will be available at `http://localhost:8000`
-API documentation: `http://localhost:8000/docs`
+API documentation: `http://localhost:8000/docs` (when DEBUG=true)
 
 ### 5. Set Up Frontend
 
@@ -110,24 +137,27 @@ kevin-test-project/
 ├── backend/
 │   ├── app/
 │   │   ├── api/          # API routes
+│   │   ├── core/          # Core utilities (constants, exceptions, logging, middleware)
 │   │   ├── services/      # Business logic and AI service
 │   │   ├── models.py      # Database models
 │   │   ├── schemas.py     # Pydantic schemas
 │   │   ├── database.py    # Database configuration
 │   │   ├── config.py      # Application settings
 │   │   └── main.py        # FastAPI app
-│   ├── alembic/           # Database migrations
 │   ├── requirements.txt
 │   └── seed_data.py       # Seed script
 ├── frontend/
 │   ├── src/
 │   │   ├── components/    # React components
-│   │   ├── services/      # API client
-│   │   ├── types/         # TypeScript types
+│   │   ├── hooks/          # Custom React hooks
+│   │   ├── services/       # API client
+│   │   ├── types/          # TypeScript types
+│   │   ├── utils/          # Utility functions
+│   │   ├── constants/      # Application constants
 │   │   └── App.tsx
 │   └── package.json
-├── docker-compose.yml     # PostgreSQL setup
 ├── .env.example
+├── .gitignore
 └── README.md
 ```
 
@@ -138,30 +168,51 @@ kevin-test-project/
 - `POST /api/feedback` - Create new feedback
 - `POST /api/feedback/summarize` - Generate AI summary
 - `GET /api/feedback/stats` - Get statistics
+- `GET /health` - Health check
 
 ## Development
 
 ### Backend
 
-- The backend uses FastAPI with automatic API documentation at `/docs`
+- The backend uses FastAPI with automatic API documentation at `/docs` (when DEBUG=true)
 - Database models are defined in `app/models.py`
-- AI service uses Google Gemini API for sentiment analysis and summarization
+- AI service uses Google Gemini 2.5 Flash API for sentiment analysis and summarization
+- Logging is configured in `app/core/logging_config.py` (logs saved to `backend/logs/app.log`)
 
 ### Frontend
 
 - Built with Vite for fast development
 - TypeScript for type safety
 - Responsive design with modern CSS
+- Custom hooks for data fetching (`useFeedback`, `useStats`)
 
 ## Troubleshooting
 
-- **Database connection errors**: Ensure Docker Compose is running and PostgreSQL is up
+- **Database connection errors**: 
+  - Ensure PostgreSQL is running: `brew services list | grep postgresql`
+  - Verify your username in the DATABASE_URL matches your PostgreSQL user
+  - Check that the database exists: `psql -U your_username -d feedback_db -c "\dt"`
+  
 - **API key errors**: Verify your Gemini API key is set correctly in `.env`
+
 - **CORS errors**: Check that `CORS_ORIGINS` in `.env` includes your frontend URL
+
+- **Port already in use**: 
+  - Backend: Change port in uvicorn command or kill existing process
+  - Frontend: Vite will automatically use next available port
 
 ## Notes
 
 - The seed script creates 32 sample feedback items with varied dates and sentiments
 - Sentiment analysis runs automatically when creating new feedback
 - The AI summary can handle up to 50 feedback items at once
+- Logs are written to `backend/logs/app.log` for debugging
 
+## Architecture Highlights
+
+- **Clean Architecture**: Separation of concerns with core, services, and API layers
+- **Error Handling**: Custom exceptions and global error handlers
+- **Logging**: Structured logging with file and console output
+- **Type Safety**: Full TypeScript coverage in frontend, type hints in backend
+- **Database Pooling**: Connection pooling for optimal performance
+- **API Documentation**: Auto-generated OpenAPI/Swagger docs
